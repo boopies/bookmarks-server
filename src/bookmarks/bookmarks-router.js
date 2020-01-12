@@ -1,15 +1,28 @@
 const express = require('express')
 const uuid = require('uuid/v4')
 const logger = require('../logger')
-const { bookmarks } = require('../store')
+//const { bookmarks } = require('../store')
+const BookmarksService = require('../bookmarks-service')
 
 const bookmarksRouter = express.Router()
 const bodyParser = express.json()
 
+const serializeBookmark = bookmark => ({
+    id: bookmark.id,
+    title: bookmark.title,
+    url: bookmark.url,
+    description: bookmark.description,
+    rating: Number(bookmark.rating),
+  })
+
 bookmarksRouter
     .route('/bookmarks')
-    .get((req,res) => {
-        res.json(bookmarks)
+    .get((req, res, next) => {
+        BookmarksService.getAllBookmarks(req.app.get('db'))
+            .then(bookmarks => {
+            res.json(bookmarks)
+            })
+            .catch(next)
     })
     .post(bodyParser, (req, res) => {
         const {title, url, rating, desc} = req.body;
@@ -84,23 +97,20 @@ bookmarksRouter
     
     })
 
-
 bookmarksRouter
     .route('/bookmarks/:id')
-    .get((req,res) => {
-        const { id } = req.params;
-        const bookmark = bookmarks.find(bm => bm.id == id);
-  
-        // make sure we found a card
-        if (!bookmark) {
-          logger.error(`Bookmark with id ${id} not found.`);
-          return res
-            .status(404)
-            .send('Bookmark Not Found');
-        }
-      
-        res.json(bookmark);
-      })
+    .get((req, res, next) => {
+        BookmarksService.getById(req.app.get('db'), req.params.id)
+            .then(bookmark => {
+                if (!bookmark) {
+                    return res.status(404).json({
+                      error: { message: `Bookmark does not exist` }
+                    })
+                  } 
+            res.json(bookmark)
+            })
+            .catch(next)
+        })
     .delete((req, res) =>{
         const { id } = req.params;
         const bookmarkIndex = bookmarks.findIndex(bm => bm.id == id);
