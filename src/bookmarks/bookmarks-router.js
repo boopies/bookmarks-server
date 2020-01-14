@@ -1,10 +1,9 @@
 const express = require('express')
-//const uuid = require('uuid/v4')
 const logger = require('../logger')
 const regex = /^(?:(?:https?|ftp):\/\/)(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)(?:\.(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)*(?:\.(?:[a-z\u00a1-\uffff]{2,}))\.?)(?::\d{2,5})?(?:[/?#]\S*)?$/i
-//const { bookmarks } = require('../store')
 const BookmarksService = require('../bookmarks-service')
 const xss = require('xss')
+const path = require('path')
 
 const bookmarksRouter = express.Router()
 const jsonParser = express.json()
@@ -64,6 +63,7 @@ bookmarksRouter
           .then(bookmark => {
             res
               .status(201)
+              .location(path.posix.join(req.originalUrl + `/${bookmark.id}`))
               .json(serializeBookmark(bookmark))
           })
           .catch(next)
@@ -101,6 +101,27 @@ bookmarksRouter
           })
           .catch(next)
     })
+    .patch(jsonParser,(req, res, next) => {
+        const { title, url, description, rating } = req.body
+        const bookmarkToUpdate = { title, url, description, rating }
+        const numberOfValues = Object.values(bookmarkToUpdate).filter(Boolean).length
+        if (numberOfValues === 0) {
+          return res.status(400).json({
+            error: {
+              message: `Request body must contain either 'title', 'url' or 'rating'`
+            }
+          })
+        }
+        BookmarksService.updateBookmark(
+            req.app.get('db'),
+            req.params.bookmark_id,
+            bookmarkToUpdate
+        )
+        .then(numRowsAffected => {
+            res.status(204).end()
+          })
+          .catch(next)    
+       })
 
 
 module.exports = bookmarksRouter

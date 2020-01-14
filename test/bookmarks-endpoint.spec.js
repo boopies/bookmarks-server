@@ -20,11 +20,11 @@ describe.only('Bookmarks Endpoints', function() {
 
     afterEach('cleanup', () => db('bookmarks').truncate())
 
-describe(`GET /bookmarks`, () => {
+describe(`GET /api/bookmarks`, () => {
     context(`Given no bookmarks`, () => {
              it(`responds with 200 and an empty list`, () => {
               return supertest(app)
-                .get('/bookmarks')
+                .get('/api/bookmarks')
                  .expect(200, [])
              })
            })
@@ -39,7 +39,7 @@ describe(`GET /bookmarks`, () => {
 
         it('responds with 200 and all of the articles', () => {
             return supertest(app)
-              .get('/bookmarks')
+              .get('/api/bookmarks')
               .expect(200, testBookmarks)
           })
     })
@@ -55,7 +55,7 @@ context(`Given an XSS attack bookmark`, () => {
 
     it('removes XSS attack content', () => {
       return supertest(app)
-        .get(`/bookmarks`)
+        .get(`/api/bookmarks`)
         .expect(200)
         .expect(res => {
           expect(res.body[0].title).to.eql(expectedBookmark.title)
@@ -65,12 +65,12 @@ context(`Given an XSS attack bookmark`, () => {
   })
 })
 
-describe(`GET /bookmarks/:bookmark_id`, () => {
+describe(`GET /api/bookmarks/:bookmark_id`, () => {
     context(`Given no bookmarks`, () => {
              it(`responds with 404`, () => {
                const bookmarkId = 123456
                return supertest(app)
-                 .get(`/bookmarks/${bookmarkId}`)
+                 .get(`/api/bookmarks/${bookmarkId}`)
                  .expect(404, { error: { message: `Bookmark Not Found` } })
              })
            })
@@ -84,17 +84,17 @@ describe(`GET /bookmarks/:bookmark_id`, () => {
             .insert(testBookmarks)
         })
 
-          it('GET /bookmarks/:bookmark_id responds with 200 and the specified bookmark', () => {
+          it('GET /api/bookmarks/:bookmark_id responds with 200 and the specified bookmark', () => {
             const bookmarkId = 2
             const expectedBookmark = testBookmarks[bookmarkId - 1]
             return supertest(app)
-              .get(`/bookmarks/${bookmarkId}`)
+              .get(`/api/bookmarks/${bookmarkId}`)
               .expect(200, expectedBookmark)
           })
       })
 })
 
-describe(`POST /bookmarks`, () => {
+describe(`POST /api/bookmarks`, () => {
     it(`creates a new bookmark, responding with 201 and the bookmark`,  function() {
         it(`creates an article, responding with 201 and the new article`, function() {
             this.retries(3)
@@ -105,7 +105,7 @@ describe(`POST /bookmarks`, () => {
             rating: '5'
         }
       return supertest(app)
-        .post('/bookmarks')
+        .post('/api/bookmarks')
         .send(newBookmark)
         .expect(201)
             .expect(res => {
@@ -117,7 +117,7 @@ describe(`POST /bookmarks`, () => {
             })
             .then(postRes =>
                 supertest(app)
-                .get(`/bookmarks/${postRes.body.id}`)
+                .get(`/api/bookmarks/${postRes.body.id}`)
                 .expect(postRes.body)
             )
         })
@@ -135,7 +135,7 @@ describe(`POST /bookmarks`, () => {
     it(`responds with 400 and an error message when the '${field}' is missing`, () => {
       delete newBookmark[field]
       return supertest(app)
-        .post('/bookmarks')
+        .post('/api/bookmarks')
         .send(newBookmark)
         .expect(400, {
           error: { message: `Missing '${field}' in request body` }
@@ -150,7 +150,7 @@ describe(`POST /bookmarks`, () => {
     rating: 'five'
   }
   return supertest(app)
-        .post('/bookmarks')
+        .post('/api/bookmarks')
         .send(newBookmark)
         .expect(400, {
           error: { message: `Rating has to be a numeral from 0 - 5` }
@@ -164,7 +164,7 @@ describe(`POST /bookmarks`, () => {
           rating: '-1'
         }
         return supertest(app)
-              .post('/bookmarks')
+              .post('/api/bookmarks')
               .send(newBookmark)
               .expect(400, {
                 error: { message: `Rating has to be a numeral from 0 - 5` }
@@ -178,7 +178,7 @@ describe(`POST /bookmarks`, () => {
           rating: '10'
         }
         return supertest(app)
-              .post('/bookmarks')
+              .post('/api/bookmarks')
               .send(newBookmark)
               .expect(400, {
                 error: { message: `Rating has to be a numeral from 0 - 5` }
@@ -193,7 +193,7 @@ describe(`POST /bookmarks`, () => {
               rating: '3'
             }
             return supertest(app)
-                  .post('/bookmarks')
+                  .post('/api/bookmarks')
                   .send(newBookmark)
                   .expect(400, {
                     error: { message: `URL has to start with http:// and be valid` }
@@ -203,7 +203,7 @@ describe(`POST /bookmarks`, () => {
   it('removes XSS attack content from response', () => {
     const { maliciousBookmark , expectedBookmark } = makeMaliciousBookmark()
     return supertest(app)
-      .post(`/bookmarks`)
+      .post(`/api/bookmarks`)
       .send(maliciousBookmark)
       .expect(201)
       .expect(res => {
@@ -213,7 +213,7 @@ describe(`POST /bookmarks`, () => {
   })
 })
 
-describe(`DELETE /bookmarks/:id`, () => {
+describe(`DELETE /api/bookmarks/:id`, () => {
     context('Given there are bookmarks in the database', () => {
       const testBookmarks = makeBookmarksArray()
  
@@ -227,11 +227,11 @@ describe(`DELETE /bookmarks/:id`, () => {
         const idToRemove = 2
         const expectedBookmarks = testBookmarks.filter(bookmark => bookmark.id !== idToRemove)
         return supertest(app)
-          .delete(`/bookmarks/${idToRemove}`)
+          .delete(`/api/bookmarks/${idToRemove}`)
           .expect(204)
           .then(res =>
             supertest(app)
-              .get(`/bookmarks`)
+              .get(`/api/bookmarks`)
               .expect(expectedBookmarks))
       })
     }) 
@@ -240,9 +240,95 @@ describe(`DELETE /bookmarks/:id`, () => {
         it(`responds with 404`, () => {
           const bookmarkId = 123456
           return supertest(app)
-            .delete(`/bookmarks/${bookmarkId}`)
+            .delete(`/api/bookmarks/${bookmarkId}`)
             .expect(404, { error: { message: `Bookmark Not Found` } })
         })
       })
 })
-})
+
+describe.only(`PATCH /api/bookmarks/:bookmark_id`, () => {
+    context(`Given no bookmarks`, () => {
+      it(`responds with 404`, () => {
+        const bookmarkId = 123456
+        return supertest(app)
+          .patch(`/api/bookmarks/${bookmarkId}`)
+          .expect(404, { error: { message: `Bookmark Not Found` } })
+      })
+    })
+
+    context('Given there are bookmarks in the database', () => {
+        const testBookmarks = makeBookmarksArray()
+   
+        beforeEach('insert bookmark', () => {
+          return db
+            .into('bookmarks')
+            .insert(testBookmarks)
+        })
+   
+        it('responds with 204 and updates the bookmark', () => {
+          const idToUpdate = 2
+          const updateBookmark = {
+            title: 'updated bookmark title',
+            url: 'http://www.updated.com',
+            description: 'updated Description',
+            rating: 3,
+          }
+          const expectedBookmark = {
+            ...testBookmarks[idToUpdate - 1],
+            ...updateBookmark
+          }  
+          return supertest(app)
+            .patch(`/api/bookmarks/${idToUpdate}`)
+            .send(updateBookmark)
+            .expect(204)
+            .then(res =>
+                supertest(app)
+                    .get(`/api/bookmarks/${idToUpdate}`)
+                    .expect(expectedBookmark))
+        })
+        it(`responds with 400 when no required fields supplied`, () => {
+            const idToUpdate = 2
+            return supertest(app)
+              .patch(`/api/bookmarks/${idToUpdate}`)
+              .send({ irrelevantField: 'foo' })
+              .expect(400, {
+                error: {
+                  message: `Request body must contain either 'title', 'url' or 'rating'`
+                }
+              })
+           })
+
+           it(`responds with 204 when updating only a subset of fields`, () => {
+            const idToUpdate = 2
+            const updateBookmark = {
+              title: 'updated Bookmark Title',
+            }
+            const expectedBookmark = {
+              ...testBookmarks[idToUpdate - 1],
+              ...updateBookmark
+            }
+      
+            return supertest(app)
+              .patch(`/api/bookmarks/${idToUpdate}`)
+              .send({
+                ...updateBookmark,
+                fieldToIgnore: 'should not be in GET response'
+              })
+              .expect(204)
+              .then(res =>
+                supertest(app)
+                  .get(`/api/bookmarks/${idToUpdate}`)
+                  .expect(expectedBookmark)
+              )
+          })
+        })
+      
+      
+
+
+
+
+      })
+   
+   
+ })
