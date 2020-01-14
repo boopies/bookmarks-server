@@ -1,17 +1,19 @@
 const express = require('express')
-const uuid = require('uuid/v4')
+//const uuid = require('uuid/v4')
 const logger = require('../logger')
+const regex = /^(?:(?:https?|ftp):\/\/)(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)(?:\.(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)*(?:\.(?:[a-z\u00a1-\uffff]{2,}))\.?)(?::\d{2,5})?(?:[/?#]\S*)?$/i
 //const { bookmarks } = require('../store')
 const BookmarksService = require('../bookmarks-service')
+const xss = require('xss')
 
 const bookmarksRouter = express.Router()
-const bodyParser = express.json()
+const jsonParser = express.json()
 
 const serializeBookmark = bookmark => ({
     id: bookmark.id,
-    title: bookmark.title,
+    title: xss(bookmark.title),
     url: bookmark.url,
-    description: bookmark.description,
+    description: xss(bookmark.description),
     rating: Number(bookmark.rating),
   })
 
@@ -20,113 +22,84 @@ bookmarksRouter
     .get((req, res, next) => {
         BookmarksService.getAllBookmarks(req.app.get('db'))
             .then(bookmarks => {
-            res.json(bookmarks)
+            res.json(bookmarks.map(serializeBookmark))
             })
             .catch(next)
     })
-    .post(bodyParser, (req, res) => {
-        const {title, url, rating, desc} = req.body;
+    .post(jsonParser, (req, res, next) => {
+        const { title, url, description, rating } = req.body
+        const newBookmark = { title, url, description, rating  }
+        const reqNewBookmark = { title, url, rating }
+        for (const [key, value] of Object.entries(reqNewBookmark)) {
+            if (value == null) {
+                logger.error(`invalid ${key} is supplied`)
+              return res.status(400).json({
+                error: { message: `Missing '${key}' in request body` }
+              })
+            }
+          }  
 
-        if (!title){
-            logger.error('Title is required')
+        if (!url.match(regex)){
+            logger.error(`invalid ${url} is supplied`)
             return res
                     .status(400)
-                    .send('Input a Title')
-        }
-    
-        if (!url){
-            logger.error('URL is required')
-            return res
-                    .status(400)
-                    .send('input a URL')
+                    .json({
+                        error: {message:'URL has to start with http:// and be valid'}
+                })
         }
 
-        if (!url.match(/^(?:(?:https?|ftp):\/\/)(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)(?:\.(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)*(?:\.(?:[a-z\u00a1-\uffff]{2,}))\.?)(?::\d{2,5})?(?:[/?#]\S*)?$/i)){
-            logger.error('URL is not a proper URL')
+        if (isNaN(rating) || rating > 5 || rating < 0 ){
+            logger.error(`Invalid rating ${rating} is supplied`)
             return res
                     .status(400)
-                    .send('URL has to start with http:// or ftp://')
+                    .json({
+                        error: {message: 'Rating has to be a numeral from 0 - 5'}
+                })
         }
 
-        if (!rating){
-            logger.error('Rating is required')
-            return res
-                    .status(400)
-                    .send('Input a Rating')
-        }
-
-        if (isNaN(rating)){
-            logger.error('Rating is has to be a number')
-            return res
-                    .status(400)
-                    .send('Rating is has to be a number')
-        }
-
-        if (rating > 5 || rating < 0 ){
-            logger.error('Rating has to be from 0 - 5')
-            return res
-                    .status(400)
-                    .send('Rating has to be from 0 - 5')
-        }
-
-        if (!desc){
-            logger.error('Description is required')
-            return res
-                    .status(400)
-                    .send('Input a Description')
-        }
-    
-        const id = uuid();
-    
-        const bookmark = {
-            id,
-            title,
-            url,
-            rating,
-            desc
-        };
-        
-        bookmarks.push(bookmark);
-
-        logger.info(`Bookmark with id ${id} created`);
-        
-        res
-          .status(201)
-          .location(`http://localhost:8000/bookmark/${id}`)
-          .json(bookmark);
-    
+        BookmarksService.insertBookmark(
+          req.app.get('db'),
+          newBookmark
+        )
+          .then(bookmark => {
+            res
+              .status(201)
+              .json(serializeBookmark(bookmark))
+          })
+          .catch(next)
+      
     })
 
 bookmarksRouter
-    .route('/bookmarks/:id')
-    .get((req, res, next) => {
-        BookmarksService.getById(req.app.get('db'), req.params.id)
-            .then(bookmark => {
-                if (!bookmark) {
-                    return res.status(404).json({
-                      error: { message: `Bookmark does not exist` }
-                    })
-                  } 
-            res.json(bookmark)
+    .route('/bookmarks/:bookmark_id')
+    .all((req, res, next) => {
+        const { bookmark_id } = req.params
+        BookmarksService.getById(req.app.get('db'), bookmark_id)
+        .then(bookmark => {
+          if (!bookmark) {
+            logger.error(`Bookmark with id ${bookmark_id} not found.`)
+            return res.status(404).json({
+              error: { message: `Bookmark Not Found` }
             })
-            .catch(next)
-        })
-    .delete((req, res) =>{
-        const { id } = req.params;
-        const bookmarkIndex = bookmarks.findIndex(bm => bm.id == id);
-        if (bookmarkIndex === -1) {
-            logger.error(`Bookmark with id ${id} not found.`);
-            return res
-              .status(404)
-              .send('Not found');
           }
-
-          bookmarks.splice(bookmarkIndex, 1);
-        
-          logger.info(`Card with id ${id} deleted.`);
-          res
-            .status(204)
-            .end();
+          res.bookmark = bookmark
+          next()
+        })
+        .catch(next)
+      })
+    .get((req, res) => {
+            res.json(serializeBookmark(res.bookmark))
+        })
+    .delete((req, res, next) =>{
+        BookmarksService.deleteBookmark(
+                req.app.get('db'),
+                req.params.bookmark_id
+        )
+        .then(numRowsAffected => {
+            res.status(204)
+                .end()
+          })
+          .catch(next)
     })
 
 
